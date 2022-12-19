@@ -1,12 +1,10 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::option_if_let_else)]
 
-use std::convert::TryInto;
 use std::env;
 use std::error::Error;
 use std::fmt::{self, Debug, Display};
 use std::fs;
-use std::os::raw::{c_int, c_uint};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -29,7 +27,7 @@ impl Version {
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        let re = Regex::new(r"^(1)\.(8|10|12|13)\.(\d\d?)(_\d+)?(-patch\d+)?$").ok()?;
+        let re = Regex::new(r"^(1)\.(8|10|12|13)\.(\d\d?)(_\d+)?(-(patch|snap)?\d+)?$").ok()?;
         let captures = re.captures(s)?;
         Some(Self {
             major: captures.get(1).and_then(|c| c.as_str().parse::<u8>().ok())?,
@@ -84,38 +82,23 @@ impl Display for RuntimeError {
     }
 }
 
-#[allow(non_snake_case, non_camel_case_types)]
-fn get_runtime_version_single<P: AsRef<Path>>(path: P) -> Result<Version, Box<dyn Error>> {
-    type H5open_t = unsafe extern "C" fn() -> c_int;
-    type H5get_libversion_t = unsafe extern "C" fn(*mut c_uint, *mut c_uint, *mut c_uint) -> c_int;
+fn get_runtime_version<P: AsRef<Path>>(path: P) -> Result<Version, Box<dyn Error>> {
+    let contents = fs::read_to_string(path.as_ref()).unwrap();
 
-    let lib = unsafe { libloading::Library::new(path.as_ref()) }?;
-    let H5open = unsafe { lib.get::<H5open_t>(b"H5open")? };
-    let H5get_libversion = unsafe { lib.get::<H5get_libversion_t>(b"H5get_libversion")? };
+    let re = Regex::new(r"(?m)^\s+HDF5 Version:\s+(1)\.(8|10|12|13)\.(\d\d?)(_\d+)?(-(patch|snap)?\d+)?$").unwrap();
+    let captures = re.captures(&contents).unwrap();
+    let version = Version {
+        major: captures.get(1).unwrap().as_str().parse::<u8>().unwrap(),
+        minor: captures.get(2).unwrap().as_str().parse::<u8>().unwrap(),
+        micro: captures.get(3).unwrap().as_str().parse::<u8>().unwrap(),
+      };
+    assert!(version.is_valid(), "Invalid 'HDF5 Version:' line in the settings file ({}): {:?}", path.as_ref().display(), version);
 
-    let mut v: (c_uint, c_uint, c_uint) = (0, 0, 0);
-    let res = unsafe {
-        if H5open() != 0 {
-            Err("H5open()".into())
-        } else if H5get_libversion(&mut v.0, &mut v.1, &mut v.2) != 0 {
-            Err("H5get_libversion()".into())
-        } else {
-            Ok(Version::new(
-                v.0.try_into().unwrap(),
-                v.1.try_into().unwrap(),
-                v.2.try_into().unwrap(),
-            ))
-        }
-    };
-    // On macos libraries using TLS will corrupt TLS from rust. We delay closing
-    // the library until program exit by forgetting the library
-    std::mem::forget(lib);
-    res
+    Ok(version)
 }
 
 fn validate_runtime_version(config: &Config) {
     println!("Looking for HDF5 library binary...");
-    let libfiles = &["libhdf5.dylib", "libhdf5.so", "hdf5.dll"];
     let mut link_paths = config.link_paths.clone();
     if cfg!(all(unix, not(target_os = "macos"))) {
         if let Some(ldv) = run_command("ld", &["--verbose"]) {
@@ -134,13 +117,13 @@ fn validate_runtime_version(config: &Config) {
         if let Ok(paths) = fs::read_dir(link_path) {
             for path in paths.flatten() {
                 let path = path.path();
-                if let Some(filename) = path.file_name() {
-                    let filename = filename.to_str().unwrap_or("");
-                    if path.is_file() && libfiles.contains(&filename) {
-                        println!("Attempting to load: {:?}", path);
-                        match get_runtime_version_single(&path) {
+                if let Some(parent) = path.parent() {
+                    let settings = parent.join("libhdf5.settings");
+                    if settings.is_file() {
+                        println!("Attempting to check settings file: {:?}", settings);
+                        match get_runtime_version(&settings) {
                             Ok(version) => {
-                                println!("    => runtime version = {:?}", version);
+                                println!("    => settings version = {:?}", version);
                                 if version == config.header.version {
                                     println!("HDF5 library runtime version matches headers.");
                                     return;
@@ -609,10 +592,10 @@ impl Config {
     pub fn emit_cfg_flags(&self) {
         let version = self.header.version;
         assert!(version >= Version::new(1, 8, 4), "required HDF5 version: >=1.8.4");
-        let mut vs: Vec<_> = (5..=21).map(|v| Version::new(1, 8, v)).collect(); // 1.8.[5-21]
+        let mut vs: Vec<_> = (5..=22).map(|v| Version::new(1, 8, v)).collect(); // 1.8.[5-21]
         vs.extend((0..=8).map(|v| Version::new(1, 10, v))); // 1.10.[0-8]
         vs.extend((0..=1).map(|v| Version::new(1, 12, v))); // 1.12.[0-1]
-        vs.extend((0..=0).map(|v| Version::new(1, 13, v))); // 1.13.[0-0]
+        vs.extend((0..=4).map(|v| Version::new(1, 13, v))); // 1.13.[0-4]
         for v in vs.into_iter().filter(|&v| version >= v) {
             println!("cargo:rustc-cfg=feature=\"{}.{}.{}\"", v.major, v.minor, v.micro);
             println!("cargo:version_{}_{}_{}=1", v.major, v.minor, v.micro);
