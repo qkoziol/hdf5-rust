@@ -9,6 +9,47 @@ pub type H5VL_class_value_t = c_int;
 #[cfg(all(feature = "1.12.0", not(feature = "1.13.0")))]
 pub type H5VL_class_t = c_void;
 
+// Capability flags for connector
+#[cfg(feature = "1.13.0")]
+pub const H5VL_CAP_FLAG_NONE:             u64 = 0x0000000000000000; // No special connector capabilities
+pub const H5VL_CAP_FLAG_THREADSAFE:       u64 = 0x0000000000000001; // Connector is threadsafe
+pub const H5VL_CAP_FLAG_ASYNC:            u64 = 0x0000000000000002; // Connector performs operations asynchronously
+pub const H5VL_CAP_FLAG_NATIVE_FILES:     u64 = 0x0000000000000004; // Connector produces native file format
+pub const H5VL_CAP_FLAG_ATTR_BASIC:       u64 = 0x0000000000000008;
+pub const H5VL_CAP_FLAG_ATTR_MORE:        u64 = 0x0000000000000010;
+pub const H5VL_CAP_FLAG_DATASET_BASIC:    u64 = 0x0000000000000020;
+pub const H5VL_CAP_FLAG_DATASET_MORE:     u64 = 0x0000000000000040;
+pub const H5VL_CAP_FLAG_FILE_BASIC:       u64 = 0x0000000000000080;
+pub const H5VL_CAP_FLAG_FILE_MORE:        u64 = 0x0000000000000100;
+pub const H5VL_CAP_FLAG_GROUP_BASIC:      u64 = 0x0000000000000200;
+pub const H5VL_CAP_FLAG_GROUP_MORE:       u64 = 0x0000000000000400;
+pub const H5VL_CAP_FLAG_LINK_BASIC:       u64 = 0x0000000000000800;
+pub const H5VL_CAP_FLAG_LINK_MORE:        u64 = 0x0000000000001000;
+pub const H5VL_CAP_FLAG_MAP_BASIC:        u64 = 0x0000000000002000;
+pub const H5VL_CAP_FLAG_MAP_MORE:         u64 = 0x0000000000004000;
+pub const H5VL_CAP_FLAG_OBJECT_BASIC:     u64 = 0x0000000000008000;
+pub const H5VL_CAP_FLAG_OBJECT_MORE:      u64 = 0x0000000000010000;
+pub const H5VL_CAP_FLAG_REF_BASIC:        u64 = 0x0000000000020000;
+pub const H5VL_CAP_FLAG_REF_MORE:         u64 = 0x0000000000040000;
+pub const H5VL_CAP_FLAG_OBJ_REF:          u64 = 0x0000000000080000;
+pub const H5VL_CAP_FLAG_REG_REF:          u64 = 0x0000000000100000;
+pub const H5VL_CAP_FLAG_ATTR_REF:         u64 = 0x0000000000200000;
+pub const H5VL_CAP_FLAG_STORED_DATATYPES: u64 = 0x0000000000400000;
+pub const H5VL_CAP_FLAG_CREATION_ORDER:   u64 = 0x0000000000800000;
+pub const H5VL_CAP_FLAG_ITERATE:          u64 = 0x0000000001000000;
+pub const H5VL_CAP_FLAG_STORAGE_SIZE:     u64 = 0x0000000002000000;
+pub const H5VL_CAP_FLAG_BY_IDX:           u64 = 0x0000000004000000;
+pub const H5VL_CAP_FLAG_GET_PLIST:        u64 = 0x0000000008000000;
+pub const H5VL_CAP_FLAG_FLUSH_REFRESH:    u64 = 0x0000000010000000;
+pub const H5VL_CAP_FLAG_EXTERNAL_LINKS:   u64 = 0x0000000020000000;
+pub const H5VL_CAP_FLAG_HARD_LINKS:       u64 = 0x0000000040000000;
+pub const H5VL_CAP_FLAG_SOFT_LINKS:       u64 = 0x0000000080000000;
+pub const H5VL_CAP_FLAG_UD_LINKS:         u64 = 0x0000000100000000;
+pub const H5VL_CAP_FLAG_TRACK_TIMES:      u64 = 0x0000000200000000;
+pub const H5VL_CAP_FLAG_MOUNT:            u64 = 0x0000000400000000;
+pub const H5VL_CAP_FLAG_FILTERS:          u64 = 0x0000000800000000;
+pub const H5VL_CAP_FLAG_FILL_VALUES:      u64 = 0x0000001000000000;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 #[cfg(feature = "1.13.0")]
@@ -17,7 +58,7 @@ pub struct H5VL_class_t {
     pub value: H5VL_class_value_t,
     pub name: *const c_char,
     pub conn_version: c_uint,
-    pub cap_flags: c_uint,
+    pub cap_flags: u64,
     pub initialize: Option<extern "C" fn(vipl_id: hid_t) -> herr_t>,
     pub terminate: Option<extern "C" fn() -> herr_t>,
 
@@ -557,23 +598,25 @@ mod v1_13_0 {
         >,
         pub read: Option<
             extern "C" fn(
-                dset: *mut c_void,
-                mem_type_id: hid_t,
-                mem_space_id: hid_t,
-                file_space_id: hid_t,
+                count: size_t,
+                dset_arr: *mut c_void,
+                mem_type_id_arr: *mut hid_t,
+                mem_space_id_arr: *mut hid_t,
+                file_space_id_arr: *mut hid_t,
                 dxpl_id: hid_t,
-                buf: *mut c_void,
+                buf_arr: *mut c_void,
                 req: *mut *mut c_void,
             ) -> herr_t,
         >,
         pub write: Option<
             extern "C" fn(
-                dset: *mut c_void,
-                mem_type_id: hid_t,
-                mem_space_id: hid_t,
-                file_space_id: hid_t,
+                count: size_t,
+                dset_arr: *mut c_void,
+                mem_type_id_arr: *mut hid_t,
+                mem_space_id_arr: *mut hid_t,
+                file_space_id_arr: *mut hid_t,
                 dxpl_id: hid_t,
-                buf: *const c_void,
+                buf_arr: *const c_void,
                 req: *mut *mut c_void,
             ) -> herr_t,
         >,
@@ -1602,7 +1645,7 @@ mod v1_13_0 {
             ) -> herr_t,
         >,
         pub get_cap_flags:
-            Option<extern "C" fn(info: *const c_void, cap_flags: *mut c_uint) -> herr_t>,
+            Option<extern "C" fn(info: *const c_void, cap_flags: *mut u64) -> herr_t>,
         pub opt_query: Option<
             extern "C" fn(
                 obj: *mut c_void,
@@ -1920,7 +1963,7 @@ mod v1_13_0 {
     extern "C" {
         pub fn H5VLfinish_lib_state() -> herr_t;
         pub fn H5VLintrospect_get_cap_flags(
-            info: *const c_void, connector_id: hid_t, cap_flags: *mut c_uint,
+            info: *const c_void, connector_id: hid_t, cap_flags: *mut u64,
         ) -> herr_t;
         pub fn H5VLstart_lib_state() -> herr_t;
     }
